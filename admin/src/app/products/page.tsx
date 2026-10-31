@@ -168,6 +168,16 @@ export default function ProductsPage() {
     }
   }
 
+  async function activateProduct(id: string) {
+    setError('');
+    try {
+      await apiFetch(`/admin/products/${id}/activate`, { method: 'PATCH' });
+      await loadProducts();
+    } catch (requestError) {
+      handleRequestError(requestError);
+    }
+  }
+
   function logout() {
     window.sessionStorage.removeItem('menly_admin_token');
     router.replace('/login');
@@ -286,6 +296,9 @@ export default function ProductsPage() {
                       )}{' '}
                       {product.is_active && (
                         <button type="button" onClick={() => void deactivateProduct(product)} style={buttonStyle}>Ngừng bán</button>
+                      )}
+                      {!product.is_active && (
+                        <button type="button" onClick={() => void activateProduct(product.id)} style={buttonStyle}>Mở bán lại</button>
                       )}
                     </td>
                   </tr>

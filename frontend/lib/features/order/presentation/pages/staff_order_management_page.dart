@@ -1,0 +1,307 @@
+import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+import '../../../../models/order_model.dart';
+import '../providers/order_provider.dart';
+import 'order_detail_page.dart';
+
+/// Man quan ly don hang cho nhan vien tren app (AP-QT9)
+class StaffOrderManagementPage extends StatefulWidget {
+  const StaffOrderManagementPage({super.key});
+
+  @override
+  State<StaffOrderManagementPage> createState() => _StaffOrderManagementPageState();
+}
+
+class _StaffOrderManagementPageState extends State<StaffOrderManagementPage> {
+  final _searchCtrl = TextEditingController();
+
+  @override
+  void dispose() {
+    _searchCtrl.dispose();
+    super.dispose();
+  }
+
+  Color _getStatusColor(OrderStatus status) {
+    switch (status) {
+      case OrderStatus.pendingPayment:
+        return Colors.orange;
+      case OrderStatus.processing:
+        return Colors.blue;
+      case OrderStatus.shipping:
+        return Colors.purple;
+      case OrderStatus.delivered:
+        return Colors.green;
+      case OrderStatus.canceled:
+      case OrderStatus.returned:
+        return Colors.red;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final orderProv = context.watch<OrderProvider>();
+    final stats = orderProv.staffStatistics;
+    final orders = orderProv.staffOrders;
+
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Quản lý đơn hàng (Nhân viên)'),
+        centerTitle: true,
+      ),
+      body: Column(
+        children: [
+          // Thong ke nhanh danh cho nhan vien
+          Container(
+            padding: const EdgeInsets.all(12),
+            color: Colors.grey.shade100,
+            child: Row(
+              children: [
+                Expanded(
+                  child: Container(
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: Colors.grey.shade300),
+                    ),
+                    child: Column(
+                      children: [
+                        const Text('Tổng đơn', style: TextStyle(fontSize: 11, color: Colors.grey)),
+                        const SizedBox(height: 2),
+                        Text('${stats['totalOrders']}',
+                            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                      ],
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Container(
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: Colors.grey.shade300),
+                    ),
+                    child: Column(
+                      children: [
+                        const Text('Chờ xử lý', style: TextStyle(fontSize: 11, color: Colors.blue)),
+                        const SizedBox(height: 2),
+                        Text('${stats['pendingCount']}',
+                            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Colors.blue)),
+                      ],
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Container(
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: Colors.grey.shade300),
+                    ),
+                    child: Column(
+                      children: [
+                        const Text('Đang giao', style: TextStyle(fontSize: 11, color: Colors.purple)),
+                        const SizedBox(height: 2),
+                        Text('${stats['shippingCount']}',
+                            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Colors.purple)),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+
+          // Thanh tim kiem don theo ma / sdt / ten khach
+          Padding(
+            padding: const EdgeInsets.fromLTRB(12, 10, 12, 6),
+            child: TextField(
+              controller: _searchCtrl,
+              decoration: InputDecoration(
+                hintText: 'Tìm theo mã đơn, SĐT hoặc tên khách...',
+                prefixIcon: const Icon(Icons.search),
+                suffixIcon: _searchCtrl.text.isNotEmpty
+                    ? IconButton(
+                        icon: const Icon(Icons.clear),
+                        onPressed: () {
+                          _searchCtrl.clear();
+                          orderProv.setStaffSearchQuery('');
+                        },
+                      )
+                    : null,
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                contentPadding: const EdgeInsets.symmetric(vertical: 10),
+                isDense: true,
+              ),
+              onChanged: (val) => orderProv.setStaffSearchQuery(val),
+            ),
+          ),
+
+          // Chips loc trang thai
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+            child: Row(
+              children: [
+                _buildFilterChip(orderProv, 'all', 'Tất cả'),
+                _buildFilterChip(orderProv, 'processing', 'Chờ duyệt & Đóng gói'),
+                _buildFilterChip(orderProv, 'shipping', 'Đang vận chuyển'),
+                _buildFilterChip(orderProv, 'delivered', 'Hoàn thành'),
+                _buildFilterChip(orderProv, 'canceled', 'Đã hủy'),
+              ],
+            ),
+          ),
+          const Divider(height: 12),
+
+          // Danh sach don hang
+          Expanded(
+            child: orders.isEmpty
+                ? const Center(child: Text('Không tìm thấy đơn hàng nào phù hợp'))
+                : ListView.separated(
+                    padding: const EdgeInsets.all(12),
+                    itemCount: orders.length,
+                    separatorBuilder: (_, __) => const SizedBox(height: 12),
+                    itemBuilder: (ctx, i) {
+                      final order = orders[i];
+
+                      return Container(
+                        padding: const EdgeInsets.all(14),
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: Colors.grey.shade200),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withValues(alpha: 0.04),
+                              blurRadius: 6,
+                              offset: const Offset(0, 2),
+                            ),
+                          ],
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            // Header don hang
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                Text(
+                                  order.code,
+                                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
+                                ),
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                                  decoration: BoxDecoration(
+                                    color: _getStatusColor(order.status).withValues(alpha: 0.12),
+                                    borderRadius: BorderRadius.circular(4),
+                                  ),
+                                  child: Text(
+                                    order.status.label,
+                                    style: TextStyle(
+                                      color: _getStatusColor(order.status),
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 11,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 6),
+
+                            // Thong tin khach hang
+                            Text('Khách hàng: ${order.shipName} • SĐT: ${order.shipPhone}',
+                                style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500)),
+                            Text('Địa chỉ: ${order.shipAddress}',
+                                style: TextStyle(fontSize: 12, color: Colors.grey.shade700)),
+                            const SizedBox(height: 6),
+                            Text(
+                              'Tổng thu: ${order.total} đ (${order.paymentMethod.toUpperCase()} • ${order.isPaid ? 'Đã thanh toán' : 'Thu tiền khi giao'})',
+                              style: TextStyle(
+                                fontSize: 13,
+                                fontWeight: FontWeight.bold,
+                                color: order.isPaid ? Colors.green : Colors.deepOrange,
+                              ),
+                            ),
+                            const Divider(height: 16),
+
+                            // Nut thao tac cua nhan vien (AP-QT9)
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.end,
+                              children: [
+                                TextButton(
+                                  onPressed: () {
+                                    Navigator.push(
+                                      context,
+                                      MaterialPageRoute(builder: (_) => OrderDetailPage(orderId: order.id)),
+                                    );
+                                  },
+                                  child: const Text('Xem đơn', style: TextStyle(fontSize: 12)),
+                                ),
+                                const SizedBox(width: 8),
+
+                                // Neu dang cho xu ly -> Chuyen sang giao hang
+                                if (order.status == OrderStatus.processing)
+                                  ElevatedButton.icon(
+                                    style: ElevatedButton.styleFrom(
+                                      backgroundColor: Colors.blue.shade700,
+                                      foregroundColor: Colors.white,
+                                      visualDensity: VisualDensity.compact,
+                                    ),
+                                    icon: const Icon(Icons.local_shipping, size: 16),
+                                    label: const Text('Giao hàng', style: TextStyle(fontSize: 12)),
+                                    onPressed: () {
+                                      orderProv.updateOrderStatusByStaff(order.id, OrderStatus.shipping);
+                                      ScaffoldMessenger.of(context).showSnackBar(
+                                        SnackBar(content: Text('Đã chuyển đơn ${order.code} sang Đang giao')),
+                                      );
+                                    },
+                                  ),
+
+                                // Neu dang giao hang -> Xac nhan hoan thanh
+                                if (order.status == OrderStatus.shipping)
+                                  ElevatedButton.icon(
+                                    style: ElevatedButton.styleFrom(
+                                      backgroundColor: Colors.green,
+                                      foregroundColor: Colors.white,
+                                      visualDensity: VisualDensity.compact,
+                                    ),
+                                    icon: const Icon(Icons.check, size: 16),
+                                    label: const Text('Đã giao xong', style: TextStyle(fontSize: 12)),
+                                    onPressed: () {
+                                      orderProv.updateOrderStatusByStaff(order.id, OrderStatus.delivered);
+                                      ScaffoldMessenger.of(context).showSnackBar(
+                                        SnackBar(content: Text('Đơn ${order.code} đã hoàn thành!')),
+                                      );
+                                    },
+                                  ),
+                              ],
+                            ),
+                          ],
+                        ),
+                      );
+                    },
+                  ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildFilterChip(OrderProvider prov, String key, String label) {
+    final isSelected = prov.staffStatusFilter == key;
+    return Padding(
+      padding: const EdgeInsets.only(right: 6),
+      child: FilterChip(
+        selected: isSelected,
+        label: Text(label, style: TextStyle(fontSize: 12, color: isSelected ? Colors.white : Colors.black87)),
+        backgroundColor: Colors.grey.shade100,
+        selectedColor: Colors.black87,
+        onSelected: (_) => prov.setStaffStatusFilter(key),
+      ),
+    );
+  }
+}

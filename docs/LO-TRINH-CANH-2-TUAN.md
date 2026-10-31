@@ -16,8 +16,10 @@ Phạm vi: phần quản trị gồm sản phẩm, đơn hàng, kho, mã giảm 
 - Xác thực Bearer token và kiểm tra vai trò admin tại các API quản trị.
 - Thêm validation và API để lọc, xem, thêm, sửa, duyệt và ngừng kinh doanh sản phẩm; thao tác ngừng kinh doanh là cập nhật trạng thái, không xóa dữ liệu đơn hàng.
 - Hoàn thiện form đăng nhập và trang admin quản lý sản phẩm, gồm lọc danh mục/trạng thái và thông báo lỗi API.
-- Bổ sung 4 kiểm tra cho dữ liệu hợp lệ, giá/slug sai, cập nhật rỗng và bộ lọc trạng thái.
-- Xác nhận `backend`: `npm test`, `npm run build`; `admin`: `npm run build` đều thành công.
+- Khi rà soát lại, sửa lỗi sản phẩm mới đang chờ duyệt nhưng có thể xuất hiện ở API công khai; danh sách và chi tiết công khai hiện chỉ trả sản phẩm đã duyệt, đang kinh doanh.
+- Đồng bộ `search_text` khi sửa tên/mô tả, giữ nội dung mô tả hiện có nếu chỉ sửa tên; duyệt sản phẩm sẽ kích hoạt kinh doanh.
+- Bổ sung kiểm thử hồi quy cho validation, API quản trị chưa đăng nhập, sản phẩm chờ duyệt, bộ lọc công khai và chỉ mục tìm kiếm (9 kiểm thử).
+- Xác nhận `backend`: `npm test` đạt 9/9, `npm run build`; `admin`: `npm run build` đều thành công.
 - Quản lý biến thể size/màu/SKU/tồn kho vẫn nằm ở ngày 3, chưa đưa vào biểu mẫu sản phẩm cơ bản.
 
 ## Ngày 3 — Hoàn thiện sản phẩm và biến thể

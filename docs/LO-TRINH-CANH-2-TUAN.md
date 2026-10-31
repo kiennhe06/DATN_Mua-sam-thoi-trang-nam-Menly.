@@ -10,12 +10,15 @@ Phạm vi: phần quản trị gồm sản phẩm, đơn hàng, kho, mã giảm 
 - Ghi nhận hiện trạng: trang sản phẩm admin còn TODO; các API quản trị trả `501`; middleware xác thực/phân quyền chưa triển khai.
 - Không chuyển nguyên commit từ repository cũ vì hai repository có lịch sử và mã nguồn khác nhau.
 
-## Ngày 2 — Nền tảng quản lý sản phẩm
+## Ngày 2 — Nền tảng quản lý sản phẩm (hoàn thành)
 
-- Hoàn thiện xác thực Supabase và kiểm tra quyền quản trị trước khi mở API ghi dữ liệu.
-- Thêm kiểm tra dữ liệu đầu vào và API quản trị để xem, thêm, sửa, duyệt và ngừng bán sản phẩm.
-- Kết nối trang admin với danh mục và danh sách sản phẩm; hiển thị lỗi để người quản trị xử lý.
-- Kiểm tra build backend/admin và rà lại các luồng dữ liệu.
+- Hoàn thiện đăng nhập Supabase bằng `SUPABASE_ANON_KEY`; chỉ tài khoản có hồ sơ vai trò admin, đang hoạt động và không bị khóa mới đăng nhập được.
+- Xác thực Bearer token và kiểm tra vai trò admin tại các API quản trị.
+- Thêm validation và API để lọc, xem, thêm, sửa, duyệt và ngừng kinh doanh sản phẩm; thao tác ngừng kinh doanh là cập nhật trạng thái, không xóa dữ liệu đơn hàng.
+- Hoàn thiện form đăng nhập và trang admin quản lý sản phẩm, gồm lọc danh mục/trạng thái và thông báo lỗi API.
+- Bổ sung 4 kiểm tra cho dữ liệu hợp lệ, giá/slug sai, cập nhật rỗng và bộ lọc trạng thái.
+- Xác nhận `backend`: `npm test`, `npm run build`; `admin`: `npm run build` đều thành công.
+- Quản lý biến thể size/màu/SKU/tồn kho vẫn nằm ở ngày 3, chưa đưa vào biểu mẫu sản phẩm cơ bản.
 
 ## Ngày 3 — Hoàn thiện sản phẩm và biến thể
 

@@ -1,7 +1,9 @@
 import { Router } from 'express';
+import { requireAdmin } from '../../middlewares/auth.js';
 
 // Quan tri routes
 const router = Router();
+router.use(requireAdmin);
 
 // GET /api/v1/admin/products - DS san pham
 router.get('/products', (_req, res) => {

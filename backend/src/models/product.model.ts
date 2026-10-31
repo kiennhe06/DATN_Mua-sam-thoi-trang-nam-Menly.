@@ -97,6 +97,18 @@ export class ProductModel {
     return data;
   }
 
+  async activateAdminProduct(id: string) {
+    const { data, error } = await this.db
+      .from('products')
+      .update({ is_active: true })
+      .eq('id', id)
+      .select('*')
+      .maybeSingle();
+
+    if (error) throw new Error(error.message);
+    return data;
+  }
+
   async approveAdminProduct(id: string) {
     const { data, error } = await this.db
       .from('products')

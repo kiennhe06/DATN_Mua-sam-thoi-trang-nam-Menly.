@@ -94,6 +94,20 @@ router.delete('/products/:id', async (req, res, next) => {
   }
 });
 
+// PATCH /api/v1/admin/products/:id/activate - mo lai kinh doanh
+router.patch('/products/:id/activate', async (req, res, next) => {
+  const id = parseProductId(req.params.id, res);
+  if (!id) return;
+
+  try {
+    const data = await productModel.activateAdminProduct(id);
+    if (!data) return res.status(404).json({ error: 'Không tìm thấy sản phẩm' });
+    return res.json({ data, message: 'Đã mở bán lại sản phẩm' });
+  } catch (error) {
+    return next(error);
+  }
+});
+
 // PATCH /api/v1/admin/products/:id/approve - duyet SP
 router.patch('/products/:id/approve', async (req, res, next) => {
   const id = parseProductId(req.params.id, res);

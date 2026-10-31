@@ -1,38 +1,111 @@
-import { Router } from 'express';
+import { Router, type Response } from 'express';
 import { requireAdmin } from '../../middlewares/auth.js';
+import { ProductModel } from '../../models/product.model.js';
+import {
+  adminProductListSchema,
+  adminProductSchema,
+  productIdSchema,
+  updateAdminProductSchema,
+} from '../../validators/admin-product.validator.js';
 
 // Quan tri routes
 const router = Router();
 router.use(requireAdmin);
+const productModel = new ProductModel();
+
+function parseProductId(id: string, res: Response) {
+  const parsed = productIdSchema.safeParse(id);
+  if (!parsed.success) {
+    res.status(400).json({ error: 'Mã sản phẩm không hợp lệ' });
+    return null;
+  }
+  return parsed.data;
+}
 
 // GET /api/v1/admin/products - DS san pham
-router.get('/products', (_req, res) => {
-  // TODO: implement
-  res.status(501).json({ message: 'Chua duoc cai dat' });
+router.get('/products', async (req, res, next) => {
+  const parsed = adminProductListSchema.safeParse(req.query);
+  if (!parsed.success) {
+    return res.status(400).json({
+      error: 'Bộ lọc sản phẩm không hợp lệ',
+      details: parsed.error.flatten().fieldErrors,
+    });
+  }
+
+  try {
+    const data = await productModel.findAdminAll(parsed.data);
+    return res.json({ data });
+  } catch (error) {
+    return next(error);
+  }
 });
 
 // POST /api/v1/admin/products - them SP
-router.post('/products', (_req, res) => {
-  // TODO: implement
-  res.status(501).json({ message: 'Chua duoc cai dat' });
+router.post('/products', async (req, res, next) => {
+  const parsed = adminProductSchema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({
+      error: 'Thông tin sản phẩm không hợp lệ',
+      details: parsed.error.flatten().fieldErrors,
+    });
+  }
+
+  try {
+    const data = await productModel.createAdminProduct(parsed.data);
+    return res.status(201).json({ data });
+  } catch (error) {
+    return next(error);
+  }
 });
 
 // PUT /api/v1/admin/products/:id - sua SP
-router.put('/products/:id', (_req, res) => {
-  // TODO: implement
-  res.status(501).json({ message: 'Chua duoc cai dat' });
+router.put('/products/:id', async (req, res, next) => {
+  const id = parseProductId(req.params.id, res);
+  if (!id) return;
+
+  const parsed = updateAdminProductSchema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({
+      error: 'Thông tin cập nhật không hợp lệ',
+      details: parsed.error.flatten().fieldErrors,
+    });
+  }
+
+  try {
+    const data = await productModel.updateAdminProduct(id, parsed.data);
+    if (!data) return res.status(404).json({ error: 'Không tìm thấy sản phẩm' });
+    return res.json({ data });
+  } catch (error) {
+    return next(error);
+  }
 });
 
 // DELETE /api/v1/admin/products/:id - xoa SP
-router.delete('/products/:id', (_req, res) => {
-  // TODO: implement
-  res.status(501).json({ message: 'Chua duoc cai dat' });
+router.delete('/products/:id', async (req, res, next) => {
+  const id = parseProductId(req.params.id, res);
+  if (!id) return;
+
+  try {
+    const data = await productModel.deactivateAdminProduct(id);
+    if (!data) return res.status(404).json({ error: 'Không tìm thấy sản phẩm' });
+    return res.json({ data, message: 'Đã ngừng kinh doanh sản phẩm' });
+  } catch (error) {
+    return next(error);
+  }
 });
 
 // PATCH /api/v1/admin/products/:id/approve - duyet SP
-router.patch('/products/:id/approve', (_req, res) => {
-  // TODO: implement
-  res.status(501).json({ message: 'Chua duoc cai dat' });
+router.patch('/products/:id/approve', async (req, res, next) => {
+  const id = parseProductId(req.params.id, res);
+  if (!id) return;
+
+  try {
+    const data = await productModel.approveAdminProduct(id);
+    if (!data) return res.status(404).json({ error: 'Không tìm thấy sản phẩm' });
+    return res.json({ data, message: 'Đã duyệt sản phẩm' });
+  } catch (error) {
+    return next(error);
+  }
 });
 
 // GET /api/v1/admin/orders - DS don

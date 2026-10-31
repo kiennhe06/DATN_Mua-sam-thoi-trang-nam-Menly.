@@ -11,7 +11,11 @@ export class ProductModel {
 
   // Lay danh sach san pham (loc theo danh muc, tim theo ten)
   async findAll(opts: { search?: string; categoryId?: string; limit?: number } = {}) {
-    let query = this.db.from('products').select('*').eq('is_active', true);
+    let query = this.db
+      .from('products')
+      .select('*')
+      .eq('is_active', true)
+      .eq('approval_status', 'approved');
     if (opts.categoryId) query = query.eq('category_id', opts.categoryId);
     if (opts.search) query = query.ilike('name', `%${opts.search}%`);
     query = query.order('created_at', { ascending: false }).limit(opts.limit ?? 50);
@@ -27,6 +31,8 @@ export class ProductModel {
       .from('products')
       .select('*, product_variants(*), product_images(*)')
       .eq('id', id)
+      .eq('is_active', true)
+      .eq('approval_status', 'approved')
       .single();
     if (error) throw new Error(error.message);
     return data;
@@ -58,6 +64,7 @@ export class ProductModel {
         thumbnail_url: input.thumbnailUrl || null,
         search_text: [input.name, input.description].filter(Boolean).join(' '),
         approval_status: 'pending',
+        is_active: false,
       })
       .select('*')
       .single();
@@ -74,6 +81,22 @@ export class ProductModel {
     if (input.description !== undefined) updates.description = input.description || null;
     if (input.price !== undefined) updates.price = input.price;
     if (input.thumbnailUrl !== undefined) updates.thumbnail_url = input.thumbnailUrl || null;
+
+    if (input.name !== undefined || input.description !== undefined) {
+      const { data: current, error: currentError } = await this.db
+        .from('products')
+        .select('name, description')
+        .eq('id', id)
+        .maybeSingle();
+
+      if (currentError) throw new Error(currentError.message);
+      if (!current) return null;
+
+      const name = input.name ?? current.name;
+      const description = input.description === undefined ? current.description : input.description || null;
+      updates.search_text = [name, description].filter(Boolean).join(' ');
+    }
+
     const { data, error } = await this.db
       .from('products')
       .update(updates)
@@ -112,7 +135,7 @@ export class ProductModel {
   async approveAdminProduct(id: string) {
     const { data, error } = await this.db
       .from('products')
-      .update({ approval_status: 'approved' })
+      .update({ approval_status: 'approved', is_active: true })
       .eq('id', id)
       .select('*')
       .maybeSingle();

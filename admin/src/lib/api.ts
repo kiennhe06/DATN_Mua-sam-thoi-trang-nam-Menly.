@@ -1,6 +1,13 @@
 // Ham goi API chung toi backend.
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:5000';
 
+export class ApiError extends Error {
+  constructor(message: string, public readonly status: number) {
+    super(message);
+    this.name = 'ApiError';
+  }
+}
+
 export async function apiFetch<T>(path: string, options: RequestInit = {}): Promise<T> {
   const headers = new Headers(options.headers);
   if (options.body && !headers.has('Content-Type')) {
@@ -22,7 +29,7 @@ export async function apiFetch<T>(path: string, options: RequestInit = {}): Prom
       typeof payload.error === 'string'
         ? payload.error
         : `Yêu cầu thất bại (${response.status})`;
-    throw new Error(message);
+    throw new ApiError(message, response.status);
   }
 
   return payload as T;

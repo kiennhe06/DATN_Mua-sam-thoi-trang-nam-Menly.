@@ -1,6 +1,202 @@
 import 'package:flutter/foundation.dart';
+import '../../../../core/mock_data.dart';
+import '../../../../models/cart_item_model.dart';
+import '../../../../models/order_model.dart';
 
-/// Quan ly trang thai cho: order
+/// Provider quan ly Don hang khach hang & Don hang nhan vien tren app
+/// Phu trach boi: Thanh Toan (AP-DH2, TM07, AP-QT9, AP-TT1)
 class OrderProvider extends ChangeNotifier {
-  // TODO: goi API va luu du lieu
+  List<OrderModel> _orders = [];
+  String _selectedStatusFilter = 'all'; // 'all', 'pending_payment', 'processing', 'shipping', 'delivered', 'canceled'
+
+  // Staff management state (AP-QT9)
+  String _staffStatusFilter = 'all';
+  String _staffSearchQuery = '';
+
+  OrderProvider() {
+    _orders = List.from(MockData.initialOrders);
+  }
+
+  List<OrderModel> get allOrders => _orders;
+  String get selectedStatusFilter => _selectedStatusFilter;
+  String get staffStatusFilter => _staffStatusFilter;
+  String get staffSearchQuery => _staffSearchQuery;
+
+  // =================== AP-DH2 & TM07: ĐƠN CỦA TÔI ===================
+
+  /// Danh sach don hang da loc theo trang thai (TM07)
+  List<OrderModel> get myFilteredOrders {
+    if (_selectedStatusFilter == 'all') {
+      return _orders;
+    }
+    return _orders.where((o) => o.status.value == _selectedStatusFilter).toList();
+  }
+
+  /// Dem so luong don hang theo tung trang thai de hien badge tren tab bar (TM07)
+  int countByStatus(String statusValue) {
+    if (statusValue == 'all') return _orders.length;
+    return _orders.where((o) => o.status.value == statusValue).length;
+  }
+
+  /// Dat trang thai loc (TM07)
+  void setStatusFilter(String status) {
+    _selectedStatusFilter = status;
+    notifyListeners();
+  }
+
+  /// Tim don hang theo ID
+  OrderModel? getOrderById(String orderId) {
+    try {
+      return _orders.firstWhere((o) => o.id == orderId);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Huy don hang (AP-DH2)
+  bool cancelOrder(String orderId, {String reason = 'Khách hàng yêu cầu hủy'}) {
+    final index = _orders.indexWhere((o) => o.id == orderId);
+    if (index >= 0) {
+      final order = _orders[index];
+      if (order.canCancel) {
+        order.status = OrderStatus.canceled;
+        order.cancelReason = reason;
+        notifyListeners();
+        return true;
+      }
+    }
+    return false;
+  }
+
+  /// Tao don hang moi (tu gio hang hoac mua ngay)
+  OrderModel createOrder({
+    required List<CartItemModel> items,
+    required String shipName,
+    required String shipPhone,
+    required String shipAddress,
+    required String paymentMethod,
+    required int subtotal,
+    required int discountAmount,
+    required int shippingFee,
+    required int total,
+  }) {
+    final orderItems = items.map((item) {
+      return OrderItemModel(
+        id: 'ord-item-${DateTime.now().millisecondsSinceEpoch}-${item.id}',
+        productName: item.product.name,
+        size: item.size,
+        color: item.color,
+        unitPrice: item.product.price,
+        quantity: item.quantity,
+        thumbnailUrl: item.product.thumbnailUrl,
+      );
+    }).toList();
+
+    final newOrder = OrderModel(
+      id: 'ord-${DateTime.now().millisecondsSinceEpoch}',
+      code: 'MNL-${DateTime.now().millisecondsSinceEpoch % 100000}',
+      status: paymentMethod == 'vnpay' ? OrderStatus.pendingPayment : OrderStatus.processing,
+      paymentMethod: paymentMethod,
+      isPaid: false,
+      subtotal: subtotal,
+      discountAmount: discountAmount,
+      shippingFee: shippingFee,
+      total: total,
+      shipName: shipName,
+      shipPhone: shipPhone,
+      shipAddress: shipAddress,
+      createdAt: DateTime.now(),
+      items: orderItems,
+    );
+
+    _orders.insert(0, newOrder);
+    notifyListeners();
+    return newOrder;
+  }
+
+  /// AP-TT1: Xac nhan thanh toan VNPay thanh cong
+  void markAsPaidVNPay(String orderId) {
+    final index = _orders.indexWhere((o) => o.id == orderId);
+    if (index >= 0) {
+      final order = _orders[index];
+      _orders[index] = OrderModel(
+        id: order.id,
+        code: order.code,
+        status: OrderStatus.processing,
+        paymentMethod: 'vnpay',
+        isPaid: true,
+        subtotal: order.subtotal,
+        discountAmount: order.discountAmount,
+        shippingFee: order.shippingFee,
+        total: order.total,
+        shipName: order.shipName,
+        shipPhone: order.shipPhone,
+        shipAddress: order.shipAddress,
+        createdAt: order.createdAt,
+        items: order.items,
+        cancelReason: order.cancelReason,
+      );
+      notifyListeners();
+    }
+  }
+
+  // =================== AP-QT9: QUẢN LÝ ĐƠN CHO NHÂN VIÊN TRÊN APP ===================
+
+  /// Danh sach don hang cho nhan vien quan ly (co tim kiem va loc)
+  List<OrderModel> get staffOrders {
+    List<OrderModel> result = List.from(_orders);
+
+    if (_staffStatusFilter != 'all') {
+      result = result.where((o) => o.status.value == _staffStatusFilter).toList();
+    }
+
+    if (_staffSearchQuery.trim().isNotEmpty) {
+      final q = _staffSearchQuery.trim().toLowerCase();
+      result = result.where((o) {
+        return o.code.toLowerCase().contains(q) ||
+            o.shipPhone.contains(q) ||
+            o.shipName.toLowerCase().contains(q);
+      }).toList();
+    }
+
+    return result;
+  }
+
+  void setStaffStatusFilter(String status) {
+    _staffStatusFilter = status;
+    notifyListeners();
+  }
+
+  void setStaffSearchQuery(String query) {
+    _staffSearchQuery = query;
+    notifyListeners();
+  }
+
+  /// Nhan vien chuyen trang thai don hang (AP-QT9)
+  void updateOrderStatusByStaff(String orderId, OrderStatus nextStatus) {
+    final index = _orders.indexWhere((o) => o.id == orderId);
+    if (index >= 0) {
+      _orders[index].status = nextStatus;
+      notifyListeners();
+    }
+  }
+
+  /// Thong ke tong quan cho nhan vien
+  Map<String, dynamic> get staffStatistics {
+    final totalRevenue = _orders
+        .where((o) => o.status != OrderStatus.canceled)
+        .fold(0, (sum, o) => sum + o.total);
+
+    final pendingCount = _orders.where((o) => o.status == OrderStatus.processing).length;
+    final shippingCount = _orders.where((o) => o.status == OrderStatus.shipping).length;
+    final deliveredCount = _orders.where((o) => o.status == OrderStatus.delivered).length;
+
+    return {
+      'totalOrders': _orders.length,
+      'totalRevenue': totalRevenue,
+      'pendingCount': pendingCount,
+      'shippingCount': shippingCount,
+      'deliveredCount': deliveredCount,
+    };
+  }
 }

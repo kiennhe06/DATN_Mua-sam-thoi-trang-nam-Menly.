@@ -34,6 +34,30 @@ class CartItemModel {
     );
   }
 
+  /// Parse du lieu tu backend API: GET /api/v1/cart
+  factory CartItemModel.fromBackendJson(Map<String, dynamic> json) {
+    final variant = json['product_variants'] as Map<String, dynamic>?;
+    final productJson = variant?['products'] as Map<String, dynamic>?;
+
+    return CartItemModel(
+      id: 'cart-${json['variant_id']}',
+      product: productJson != null
+          ? ProductModel.fromJson(Map<String, dynamic>.from(productJson))
+          : const ProductModel(
+              id: '',
+              name: 'Sản phẩm',
+              slug: 'sp',
+              price: 0,
+              thumbnailUrl: '',
+            ),
+      variantId: json['variant_id']?.toString() ?? '',
+      size: variant?['size']?.toString() ?? 'M',
+      color: variant?['color']?.toString() ?? 'Đen',
+      quantity: (json['quantity'] is num) ? (json['quantity'] as num).toInt() : 1,
+      isSelected: true,
+    );
+  }
+
   Map<String, dynamic> toJson() => {
     'id': id,
     'product': product.toJson(),

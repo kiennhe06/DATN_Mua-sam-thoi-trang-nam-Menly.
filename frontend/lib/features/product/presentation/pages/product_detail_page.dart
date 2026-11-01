@@ -16,6 +16,7 @@ class ProductDetailPage extends StatefulWidget {
 }
 
 class _ProductDetailPageState extends State<ProductDetailPage> {
+  late ProductModel _product;
   String _selectedSize = 'M';
   String _selectedColor = 'Đen';
   int _quantity = 1;
@@ -23,20 +24,31 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
   @override
   void initState() {
     super.initState();
-    // TM02: Tu dong them san pham vao danh sach da xem gan day
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      context.read<ProductProvider>().addToRecentlyViewed(widget.product);
+    _product = widget.product;
+    // TM02: Tu dong them san pham vao danh sach da xem gan day va goi API GET /api/v1/products/:id
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      context.read<ProductProvider>().addToRecentlyViewed(_product);
+      final detail = await context.read<ProductProvider>().fetchProductDetail(_product.id);
+      if (detail != null && mounted) {
+        setState(() {
+          _product = detail;
+          if (_product.variants.isNotEmpty) {
+            _selectedSize = _product.variants.first.size;
+            _selectedColor = _product.variants.first.color;
+          }
+        });
+      }
     });
 
-    if (widget.product.variants.isNotEmpty) {
-      _selectedSize = widget.product.variants.first.size;
-      _selectedColor = widget.product.variants.first.color;
+    if (_product.variants.isNotEmpty) {
+      _selectedSize = _product.variants.first.size;
+      _selectedColor = _product.variants.first.color;
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    final p = widget.product;
+    final p = _product;
     final wishlist = context.watch<WishlistProvider>();
     final cart = context.read<CartProvider>();
     final isFav = wishlist.isFavorite(p.id);

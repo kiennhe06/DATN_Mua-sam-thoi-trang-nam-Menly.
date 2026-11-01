@@ -15,7 +15,9 @@ export interface CartItemProductInfo {
   slug: string;
   price: number;
   thumbnailUrl: string | null;
+  thumbnail_url?: string | null;
   isActive: boolean;
+  is_active?: boolean;
 }
 
 export interface CartItemVariantInfo {
@@ -24,9 +26,18 @@ export interface CartItemVariantInfo {
   color: string;
   sku: string;
   stock: number;
+  products?: {
+    id: string;
+    name: string;
+    slug: string;
+    price: number;
+    thumbnail_url: string | null;
+    is_active: boolean;
+  };
 }
 
 export interface CartItemDetail {
+  variant_id: string;
   variantId: string;
   quantity: number;
   price: number;
@@ -34,6 +45,22 @@ export interface CartItemDetail {
   stock: number;
   isOutOfStock: boolean;
   updatedAt: string;
+  updated_at: string;
+  product_variants: {
+    id: string;
+    size: string;
+    color: string;
+    sku: string;
+    stock: number;
+    products: {
+      id: string;
+      name: string;
+      slug: string;
+      price: number;
+      thumbnail_url: string | null;
+      is_active: boolean;
+    };
+  };
   variant: CartItemVariantInfo;
   product: CartItemProductInfo;
 }
@@ -87,7 +114,7 @@ export class CartModel {
   protected db = supabase;
 
   /**
-   * Lấy chi tiết toàn bộ giỏ hàng của người dùng
+   * Lấy chi tiết toàn bộ giỏ hàng của người dùng (tương thích cả frontend mobile và web)
    */
   async getCart(userId: string): Promise<CartSummary> {
     const { data, error } = await this.db
@@ -137,7 +164,28 @@ export class CartModel {
       subtotal += itemTotal;
       totalItems += quantity;
 
+      const productPayload = {
+        id: product?.id ?? '',
+        name: product?.name ?? 'Sản phẩm không khả dụng',
+        slug: product?.slug ?? '',
+        price,
+        thumbnailUrl: product?.thumbnail_url ?? null,
+        thumbnail_url: product?.thumbnail_url ?? null,
+        isActive: Boolean(product?.is_active),
+        is_active: Boolean(product?.is_active),
+      };
+
+      const variantPayload = {
+        id: variant?.id ?? row.variant_id,
+        size: variant?.size ?? '',
+        color: variant?.color ?? '',
+        sku: variant?.sku ?? '',
+        stock,
+        products: productPayload,
+      };
+
       return {
+        variant_id: row.variant_id,
         variantId: row.variant_id,
         quantity,
         price,
@@ -145,21 +193,10 @@ export class CartModel {
         stock,
         isOutOfStock: stock < quantity,
         updatedAt: row.updated_at,
-        variant: {
-          id: variant?.id ?? row.variant_id,
-          size: variant?.size ?? '',
-          color: variant?.color ?? '',
-          sku: variant?.sku ?? '',
-          stock,
-        },
-        product: {
-          id: product?.id ?? '',
-          name: product?.name ?? 'Sản phẩm không khả dụng',
-          slug: product?.slug ?? '',
-          price,
-          thumbnailUrl: product?.thumbnail_url ?? null,
-          isActive: Boolean(product?.is_active),
-        },
+        updated_at: row.updated_at,
+        product_variants: variantPayload,
+        variant: variantPayload,
+        product: productPayload,
       };
     });
 
@@ -168,6 +205,14 @@ export class CartModel {
       totalItems,
       subtotal,
     };
+  }
+
+  /**
+   * Alias tương thích findByUser
+   */
+  async findByUser(userId: string) {
+    const summary = await this.getCart(userId);
+    return summary.items;
   }
 
   /**
@@ -330,10 +375,21 @@ export class CartModel {
   }
 
   /**
+   * Tương thích upsertItem
+   */
+  async upsertItem(userId: string, variantId: string, quantity: number) {
+    return this.updateQuantity(userId, variantId, quantity).catch(async (err) => {
+      if (err instanceof CartError && err.statusCode === 404) {
+        return this.addItem(userId, variantId, quantity);
+      }
+      throw err;
+    });
+  }
+
+  /**
    * Xóa một sản phẩm khỏi giỏ hàng
    */
   async removeItem(userId: string, variantId: string): Promise<CartSummary> {
-    // 1. Kiểm tra xem item có trong giỏ hàng không
     const { data: existingItem, error: findError } = await this.db
       .from('cart_items')
       .select('quantity')
@@ -349,7 +405,6 @@ export class CartModel {
       throw new CartError('Sản phẩm không tồn tại trong giỏ hàng của bạn', 404);
     }
 
-    // 2. Xóa item
     const { error: deleteError } = await this.db
       .from('cart_items')
       .delete()
@@ -380,5 +435,9 @@ export class CartModel {
       success: true,
       message: 'Đã xóa toàn bộ sản phẩm khỏi giỏ hàng thành công',
     };
+  }
+
+  async clear(userId: string) {
+    return this.clearCart(userId);
   }
 }

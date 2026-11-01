@@ -6,7 +6,7 @@ import { ProfileViewModel } from '../../viewmodels/profile.viewmodel.js';
 import { updateProfileSchema } from '../../validators/profile.validator.js';
 import { ProfileError } from '../../models/profile.model.js';
 
-// Ho so ca nhan routes
+// Ho so ca nhan routes (can dang nhap)
 const router = Router();
 const vm = new ProfileViewModel();
 
@@ -47,17 +47,27 @@ router.put('/', validateBody(updateProfileSchema), async (req, res, next) => {
   }
 });
 
-// POST /api/v1/profile/upload-avatar - Tải ảnh đại diện lên Supabase Storage qua Multer
+// POST /api/v1/profile/upload-avatar - Tải ảnh đại diện lên Supabase Storage qua Multer hoac cap nhat qua URL
 router.post('/upload-avatar', uploadAvatarMiddleware('avatar'), async (req, res, next) => {
   try {
-    if (!req.file) {
-      return res.status(400).json({ error: 'Vui lòng chọn file ảnh để tải lên' });
+    if (req.file) {
+      const result = await vm.uploadAvatar(req.user!.id, req.file);
+      return res.json({
+        message: 'Cập nhật ảnh đại diện thành công',
+        data: result,
+      });
     }
-    const result = await vm.uploadAvatar(req.user!.id, req.file);
-    return res.json({
-      message: 'Cập nhật ảnh đại diện thành công',
-      data: result,
-    });
+
+    const { avatarUrl } = (req.body as { avatarUrl?: string }) ?? {};
+    if (avatarUrl) {
+      const data = await vm.updateAvatar(req.user!.id, avatarUrl);
+      return res.json({
+        message: 'Cập nhật ảnh đại diện thành công',
+        data,
+      });
+    }
+
+    return res.status(400).json({ error: 'Vui lòng chọn file ảnh hoặc cung cấp avatarUrl' });
   } catch (error) {
     return handleProfileError(error, res, next);
   }

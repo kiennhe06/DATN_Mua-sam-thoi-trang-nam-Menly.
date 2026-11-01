@@ -10,7 +10,7 @@ import {
   variantIdParamSchema,
 } from '../../validators/cart.validator.js';
 
-// Gio hang routes
+// Gio hang routes (can dang nhap)
 const router = Router();
 const vm = new CartViewModel();
 
@@ -28,11 +28,15 @@ function handleCartError(
 // Tat ca cac thao tac voi gio hang deu yeu cau dang nhap
 router.use(requireAuth);
 
-// GET /api/v1/cart - Xem chi tiet gio hang
+// GET /api/v1/cart - Xem chi tiet gio hang (tra ve danh sach tuong thich ca mobile va web)
 router.get('/', async (req, res, next) => {
   try {
-    const data = await vm.getCart(req.user!.id);
-    return res.json({ data });
+    const summary = await vm.getCart(req.user!.id);
+    return res.json({
+      data: summary.items,
+      totalItems: summary.totalItems,
+      subtotal: summary.subtotal,
+    });
   } catch (error) {
     return handleCartError(error, res, next);
   }
@@ -43,10 +47,12 @@ router.post('/items', validateBody(addToCartSchema), async (req, res, next) => {
   try {
     const variantId = (req.body.variantId ?? req.body.variant_id) as string;
     const quantity = Number(req.body.quantity ?? 1);
-    const data = await vm.addItem(req.user!.id, variantId, quantity);
+    const summary = await vm.addItem(req.user!.id, variantId, quantity);
     return res.status(201).json({
       message: 'Thêm sản phẩm vào giỏ hàng thành công',
-      data,
+      data: summary.items,
+      totalItems: summary.totalItems,
+      subtotal: summary.subtotal,
     });
   } catch (error) {
     return handleCartError(error, res, next);
@@ -58,25 +64,30 @@ router.post('/', validateBody(addToCartSchema), async (req, res, next) => {
   try {
     const variantId = (req.body.variantId ?? req.body.variant_id) as string;
     const quantity = Number(req.body.quantity ?? 1);
-    const data = await vm.addItem(req.user!.id, variantId, quantity);
+    const summary = await vm.addItem(req.user!.id, variantId, quantity);
     return res.status(201).json({
       message: 'Thêm sản phẩm vào giỏ hàng thành công',
-      data,
+      data: summary.items,
+      totalItems: summary.totalItems,
+      subtotal: summary.subtotal,
     });
   } catch (error) {
     return handleCartError(error, res, next);
   }
 });
 
-// PUT /api/v1/cart/items - Cap nhat so luong qua request body { variantId, quantity }
+// PUT /api/v1/cart/items - Them / Cap nhat so luong qua request body { variantId, quantity }
 router.put('/items', validateBody(putCartItemBodySchema), async (req, res, next) => {
   try {
     const variantId = (req.body.variantId ?? req.body.variant_id) as string;
     const quantity = Number(req.body.quantity);
-    const data = await vm.updateQuantity(req.user!.id, variantId, quantity);
+    await vm.setItem(req.user!.id, variantId, quantity);
+    const summary = await vm.getCart(req.user!.id);
     return res.json({
       message: 'Cập nhật số lượng sản phẩm trong giỏ hàng thành công',
-      data,
+      data: summary.items,
+      totalItems: summary.totalItems,
+      subtotal: summary.subtotal,
     });
   } catch (error) {
     return handleCartError(error, res, next);
@@ -92,10 +103,12 @@ router.put(
     try {
       const { variantId } = req.params;
       const { quantity } = req.body;
-      const data = await vm.updateQuantity(req.user!.id, variantId, quantity);
+      const summary = await vm.updateQuantity(req.user!.id, variantId, quantity);
       return res.json({
         message: 'Cập nhật số lượng sản phẩm trong giỏ hàng thành công',
-        data,
+        data: summary.items,
+        totalItems: summary.totalItems,
+        subtotal: summary.subtotal,
       });
     } catch (error) {
       return handleCartError(error, res, next);
@@ -112,10 +125,12 @@ router.patch(
     try {
       const { variantId } = req.params;
       const { quantity } = req.body;
-      const data = await vm.updateQuantity(req.user!.id, variantId, quantity);
+      const summary = await vm.updateQuantity(req.user!.id, variantId, quantity);
       return res.json({
         message: 'Cập nhật số lượng sản phẩm trong giỏ hàng thành công',
-        data,
+        data: summary.items,
+        totalItems: summary.totalItems,
+        subtotal: summary.subtotal,
       });
     } catch (error) {
       return handleCartError(error, res, next);
@@ -127,10 +142,12 @@ router.patch(
 router.delete('/items/:variantId', validateParams(variantIdParamSchema), async (req, res, next) => {
   try {
     const { variantId } = req.params;
-    const data = await vm.removeItem(req.user!.id, variantId);
+    const summary = await vm.removeItem(req.user!.id, variantId);
     return res.json({
       message: 'Đã xóa sản phẩm khỏi giỏ hàng',
-      data,
+      data: summary.items,
+      totalItems: summary.totalItems,
+      subtotal: summary.subtotal,
     });
   } catch (error) {
     return handleCartError(error, res, next);
@@ -140,7 +157,7 @@ router.delete('/items/:variantId', validateParams(variantIdParamSchema), async (
 // DELETE /api/v1/cart - Xoa toan bo gio hang (Clear Cart)
 router.delete('/', async (req, res, next) => {
   try {
-    const result = await vm.clearCart(req.user!.id);
+    const result = await vm.clear(req.user!.id);
     return res.json(result);
   } catch (error) {
     return handleCartError(error, res, next);

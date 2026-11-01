@@ -83,6 +83,22 @@ export class ProfileModel {
     };
   }
 
+  /**
+   * Alias getById tương thích
+   */
+  async getById(userId: string) {
+    const profile = await this.getProfile(userId);
+    return {
+      id: profile.id,
+      email: profile.email,
+      full_name: profile.fullName,
+      phone: profile.phone,
+      avatar_url: profile.avatarUrl,
+      role: profile.role,
+      created_at: profile.createdAt,
+    };
+  }
+
   async updateProfile(userId: string, input: ProfileUpdateDTO): Promise<UserProfile> {
     const updateData: Record<string, unknown> = {};
 
@@ -141,6 +157,25 @@ export class ProfileModel {
       isActive: data.is_active,
       isLocked: data.is_locked,
       createdAt: data.created_at,
+    };
+  }
+
+  /**
+   * Alias update tương thích
+   */
+  async update(userId: string, fields: { full_name?: string; phone?: string; avatar_url?: string }) {
+    const updated = await this.updateProfile(userId, {
+      full_name: fields.full_name,
+      phone: fields.phone,
+      avatar_url: fields.avatar_url,
+    });
+    return {
+      id: updated.id,
+      email: updated.email,
+      full_name: updated.fullName,
+      phone: updated.phone,
+      avatar_url: updated.avatarUrl,
+      role: updated.role,
     };
   }
 

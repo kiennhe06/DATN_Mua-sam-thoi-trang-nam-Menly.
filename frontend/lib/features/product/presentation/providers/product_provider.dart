@@ -1,18 +1,24 @@
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import '../../../../core/mock_data.dart';
-import '../../../../core/network/api_client.dart';
-import '../../../../models/banner_model.dart';
-import '../../../../models/product_model.dart';
+import 'package:menly_app/core/mock_data.dart';
+import 'package:menly_app/core/network/api_client.dart';
+import 'package:menly_app/models/banner_model.dart';
+import 'package:menly_app/models/category_model.dart';
+import 'package:menly_app/models/product_model.dart';
 
-/// Provider quan ly San pham, Banner, Da xem gan day, Lich su tim kiem
-/// Phu trach boi: Thanh Toan (AP-SP1, AP-BN1, TM11, TM02, TM03)
+/// Provider quan ly San pham, Banner, Danh muc, Da xem gan day, Lich su tim kiem
+/// Ket noi truc tiep cac API backend da hoan thien:
+/// - GET /api/v1/banners (AP-BN1)
+/// - GET /api/v1/categories (AP-SP1)
+/// - GET /api/v1/products (AP-SP1, TM11)
+/// - GET /api/v1/products/:id (AP-SP1)
 class ProductProvider extends ChangeNotifier {
   final ApiClient _api = ApiClient();
 
   List<ProductModel> _allProducts = [];
   List<ProductModel> _filteredProducts = [];
   List<BannerModel> _banners = [];
+  List<CategoryModel> _categories = [];
   List<ProductModel> _recentlyViewed = [];
   List<String> _searchHistory = [];
 
@@ -21,6 +27,7 @@ class ProductProvider extends ChangeNotifier {
 
   // Filter state
   String _selectedCategory = 'Tất cả';
+  String? _selectedCategoryId;
   String _searchQuery = '';
   String _sortBy = 'newest'; // 'newest', 'price_asc', 'price_desc', 'best_seller'
   double _minPrice = 0;
@@ -51,71 +58,135 @@ class ProductProvider extends ChangeNotifier {
   List<ProductModel> get bestSellers =>
       _allProducts.where((p) => p.isBestSeller).toList();
 
-  /// Danh muc san pham
-  List<String> get categories => [
-    'Tất cả',
-    'Áo sơ mi',
-    'Áo thun',
-    'Quần jeans',
-    'Quần tây',
-    'Áo khoác',
-  ];
+  /// Danh muc san pham (ket noi API /categories)
+  List<String> get categories {
+    final list = ['Tất cả'];
+    if (_categories.isNotEmpty) {
+      list.addAll(_categories.map((c) => c.name));
+    } else {
+      list.addAll([
+        'Áo sơ mi',
+        'Áo thun',
+        'Quần jeans',
+        'Quần tây',
+        'Áo khoác',
+      ]);
+    }
+    return list;
+  }
 
   Future<void> init() async {
     await Future.wait([
       loadBanners(),
+      loadCategories(),
       loadProducts(),
       loadRecentlyViewed(),
       loadSearchHistory(),
     ]);
   }
 
-  /// AP-BN1: Load banner quang cao trang chu
+  /// AP-BN1: Goi API GET /api/v1/banners
   Future<void> loadBanners() async {
     try {
       final res = await _api.dio.get('/banners');
       if (res.statusCode == 200 && res.data['data'] != null) {
-        _banners = (res.data['data'] as List)
-            .map((b) => BannerModel.fromJson(b))
+        final list = (res.data['data'] as List)
+            .map((b) => BannerModel.fromJson(Map<String, dynamic>.from(b)))
             .toList();
-      } else {
-        _banners = MockData.banners;
+        if (list.isNotEmpty) {
+          _banners = list;
+          notifyListeners();
+          return;
+        }
       }
     } catch (_) {
-      // Fallback mockup banners cho AP-BN1
-      _banners = MockData.banners;
+      // Fallback mockup banners cho AP-BN1 khi offline
     }
+    _banners = MockData.banners;
     notifyListeners();
   }
 
-  /// AP-SP1: Load san pham voi bo loc & tim kiem
+  /// AP-SP1: Goi API GET /api/v1/categories
+  Future<void> loadCategories() async {
+    try {
+      final res = await _api.dio.get('/categories');
+      if (res.statusCode == 200 && res.data['data'] != null) {
+        _categories = (res.data['data'] as List)
+            .map((c) => CategoryModel.fromJson(Map<String, dynamic>.from(c)))
+            .toList();
+        notifyListeners();
+      }
+    } catch (_) {}
+  }
+
+  /// AP-SP1 & TM11: Goi API GET /api/v1/products (loc theo search, categoryId, limit)
   Future<void> loadProducts() async {
     _loading = true;
     _error = null;
     notifyListeners();
 
     try {
-      final res = await _api.dio.get('/products', queryParameters: {'limit': 50});
-      if (res.statusCode == 200 && res.data['data'] != null) {
-        _allProducts = (res.data['data'] as List)
-            .map((p) => ProductModel.fromJson(p))
-            .toList();
-      } else {
-        _allProducts = List.from(MockData.products);
+      final queryParams = <String, dynamic>{'limit': 50};
+      if (_searchQuery.trim().isNotEmpty) {
+        queryParams['search'] = _searchQuery.trim();
       }
-    } catch (_) {
-      // Fallback mockup products
-      _allProducts = List.from(MockData.products);
+      if (_selectedCategoryId != null) {
+        queryParams['categoryId'] = _selectedCategoryId;
+      }
+
+      final res = await _api.dio.get('/products', queryParameters: queryParams);
+      if (res.statusCode == 200 && res.data['data'] != null) {
+        final apiProducts = (res.data['data'] as List)
+            .map((p) => ProductModel.fromJson(Map<String, dynamic>.from(p)))
+            .toList();
+
+        if (apiProducts.isNotEmpty) {
+          _allProducts = apiProducts;
+          _applyFilters();
+          _loading = false;
+          notifyListeners();
+          return;
+        }
+      }
+    } catch (e) {
+      _error = e.toString();
     }
 
+    // Fallback mockup products khi chua seed DB hoac offline
+    _allProducts = List.from(MockData.products);
     _applyFilters();
     _loading = false;
     notifyListeners();
   }
 
+  /// AP-SP1: Goi API GET /api/v1/products/:id de lay chi tiet day du bien the & anh
+  Future<ProductModel?> fetchProductDetail(String id) async {
+    try {
+      final res = await _api.dio.get('/products/$id');
+      if (res.statusCode == 200 && res.data['data'] != null) {
+        return ProductModel.fromJson(Map<String, dynamic>.from(res.data['data']));
+      }
+    } catch (_) {}
+    // Fallback
+    try {
+      return _allProducts.firstWhere((p) => p.id == id);
+    } catch (_) {
+      return null;
+    }
+  }
+
   /// AP-SP1: Bo loc theo danh muc
   void setCategory(String category) {
     _selectedCategory = category;
+    if (category == 'Tất cả') {
+      _selectedCategoryId = null;
+    } else {
+      final cat = _categories.cast<CategoryModel?>().firstWhere(
+            (c) => c?.name.toLowerCase() == category.toLowerCase(),
+            orElse: () => null,
+          );
+      _selectedCategoryId = cat?.id;
+    }
     _applyFilters();
     notifyListeners();
   }
@@ -145,6 +216,7 @@ class ProductProvider extends ChangeNotifier {
   /// Reset bo loc
   void resetFilters() {
     _selectedCategory = 'Tất cả';
+    _selectedCategoryId = null;
     _searchQuery = '';
     _sortBy = 'newest';
     _minPrice = 0;
@@ -158,7 +230,12 @@ class ProductProvider extends ChangeNotifier {
 
     // Filter theo category
     if (_selectedCategory != 'Tất cả') {
-      result = result.where((p) => p.categoryName.toLowerCase().contains(_selectedCategory.toLowerCase())).toList();
+      result = result.where((p) {
+        if (_selectedCategoryId != null && p.categoryId.isNotEmpty) {
+          return p.categoryId == _selectedCategoryId;
+        }
+        return p.categoryName.toLowerCase().contains(_selectedCategory.toLowerCase());
+      }).toList();
     }
 
     // Filter theo search query
@@ -196,7 +273,6 @@ class ProductProvider extends ChangeNotifier {
 
   // =================== TM02: ĐÃ XEM GẦN ĐÂY ===================
 
-  /// TM02: Them san pham vao danh sach da xem gan day
   Future<void> addToRecentlyViewed(ProductModel product) async {
     _recentlyViewed.removeWhere((p) => p.id == product.id);
     _recentlyViewed.insert(0, product);
@@ -212,7 +288,6 @@ class ProductProvider extends ChangeNotifier {
     } catch (_) {}
   }
 
-  /// TM02: Doc lich su da xem tu local
   Future<void> loadRecentlyViewed() async {
     try {
       final prefs = await SharedPreferences.getInstance();
@@ -233,7 +308,6 @@ class ProductProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// TM02: Xoa lich su da xem
   Future<void> clearRecentlyViewed() async {
     _recentlyViewed.clear();
     notifyListeners();
@@ -245,7 +319,6 @@ class ProductProvider extends ChangeNotifier {
 
   // =================== TM03: GỢI Ý & LỊCH SỬ TÌM KIẾM ===================
 
-  /// TM03: Load lich su tim kiem tu local
   Future<void> loadSearchHistory() async {
     try {
       final prefs = await SharedPreferences.getInstance();
@@ -261,7 +334,6 @@ class ProductProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// TM03: Luu tu khoa vao lich su tim kiem
   Future<void> addSearchKeyword(String keyword) async {
     final term = keyword.trim();
     if (term.isEmpty) return;
@@ -279,7 +351,6 @@ class ProductProvider extends ChangeNotifier {
     } catch (_) {}
   }
 
-  /// TM03: Xoa 1 tu khoa trong lich su
   Future<void> removeSearchKeyword(String keyword) async {
     _searchHistory.remove(keyword);
     notifyListeners();
@@ -289,7 +360,6 @@ class ProductProvider extends ChangeNotifier {
     } catch (_) {}
   }
 
-  /// TM03: Xoa toan bo lich su tim kiem
   Future<void> clearSearchHistory() async {
     _searchHistory.clear();
     notifyListeners();
@@ -299,7 +369,6 @@ class ProductProvider extends ChangeNotifier {
     } catch (_) {}
   }
 
-  /// TM03: Lay danh sach goi y tu dong khi dang go
   List<String> getSuggestions(String query) {
     if (query.trim().isEmpty) return [];
     final q = query.toLowerCase().trim();

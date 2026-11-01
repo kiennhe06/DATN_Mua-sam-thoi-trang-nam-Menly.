@@ -1,46 +1,30 @@
 import 'package:flutter/foundation.dart';
-import '../../../../core/mock_data.dart';
-import '../../../../models/cart_item_model.dart';
-import '../../../../models/product_model.dart';
-import '../../../../models/voucher_model.dart';
+import 'package:menly_app/core/mock_data.dart';
+import 'package:menly_app/core/network/api_client.dart';
+import 'package:menly_app/models/cart_item_model.dart';
+import 'package:menly_app/models/product_model.dart';
+import 'package:menly_app/models/voucher_model.dart';
 
 /// Provider quan ly Gio hang va Ap dung ma giam gia
-/// Phu trach boi: Thanh Toan (AP-GH1, AP-VC1)
+/// Ket noi truc tiep cac API backend da hoan thien (AP-GH1, AP-VC1):
+/// - GET /api/v1/cart (Xem gio hang)
+/// - PUT /api/v1/cart/items (Them/sua so luong mon)
+/// - DELETE /api/v1/cart/items/:variantId (Xoa 1 mon)
+/// - DELETE /api/v1/cart (Xoa ca gio)
 class CartProvider extends ChangeNotifier {
+  final ApiClient _api = ApiClient();
   final List<CartItemModel> _items = [];
   VoucherModel? _appliedVoucher;
   final int _baseShippingFee = 25000;
+  bool _isLoading = false;
 
   CartProvider() {
-    // Khoi tao mot so san pham mau trong gio hang de trai nghiem ngay
-    _initSampleCart();
-  }
-
-  void _initSampleCart() {
-    if (MockData.products.length >= 2) {
-      _items.add(CartItemModel(
-        id: 'cart-1',
-        product: MockData.products[0], // Áo sơ mi trắng
-        variantId: 'v-01-m',
-        size: 'M',
-        color: 'Trắng',
-        quantity: 1,
-        isSelected: true,
-      ));
-      _items.add(CartItemModel(
-        id: 'cart-2',
-        product: MockData.products[3], // Áo polo
-        variantId: 'v-04-l',
-        size: 'L',
-        color: 'Xanh Rêu',
-        quantity: 2,
-        isSelected: true,
-      ));
-    }
+    loadCartFromApi();
   }
 
   List<CartItemModel> get items => _items;
   VoucherModel? get appliedVoucher => _appliedVoucher;
+  bool get isLoading => _isLoading;
 
   /// Tong so san pham trong gio
   int get totalItemCount =>
@@ -67,7 +51,6 @@ class CartProvider extends ChangeNotifier {
   /// Phi van chuyen
   int get shippingFee {
     if (selectedItems.isEmpty) return 0;
-    // Neu co voucher FREESHIP va du dieu kien
     if (_appliedVoucher?.code == 'FREESHIP' && selectedSubtotal >= 300000) {
       return 0;
     }
@@ -81,24 +64,88 @@ class CartProvider extends ChangeNotifier {
     return total > 0 ? total : 0;
   }
 
-  // =================== AP-GH1: THAO TÁC GIỎ HÀNG ===================
+  // =================== AP-GH1: KẾT NỐI API BACKEND GIỎ HÀNG ===================
 
-  /// Them san pham vao gio
-  void addToCart(ProductModel product, {String size = 'M', String color = 'Đen', int quantity = 1}) {
+  /// Goi API GET /api/v1/cart de dong bo gio hang tu may chu
+  Future<void> loadCartFromApi() async {
+    _isLoading = true;
+    notifyListeners();
+
+    try {
+      final res = await _api.dio.get('/cart');
+      if (res.statusCode == 200 && res.data['data'] != null) {
+        final rawList = res.data['data'] as List;
+        if (rawList.isNotEmpty) {
+          _items.clear();
+          for (var item in rawList) {
+            _items.add(CartItemModel.fromBackendJson(Map<String, dynamic>.from(item)));
+          }
+          _isLoading = false;
+          notifyListeners();
+          return;
+        }
+      }
+    } catch (_) {
+      // Backend offline hoac chua dang nhap -> Dung sample fallback
+    }
+
+    if (_items.isEmpty) {
+      _initSampleCart();
+    }
+    _isLoading = false;
+    notifyListeners();
+  }
+
+  void _initSampleCart() {
+    if (MockData.products.length >= 2) {
+      _items.add(CartItemModel(
+        id: 'cart-1',
+        product: MockData.products[0],
+        variantId: 'v-01-m',
+        size: 'M',
+        color: 'Trắng',
+        quantity: 1,
+        isSelected: true,
+      ));
+      _items.add(CartItemModel(
+        id: 'cart-2',
+        product: MockData.products[3],
+        variantId: 'v-04-l',
+        size: 'L',
+        color: 'Xanh Rêu',
+        quantity: 2,
+        isSelected: true,
+      ));
+    }
+  }
+
+  /// Them san pham vao gio (Dong bo PUT /api/v1/cart/items)
+  Future<void> addToCart(ProductModel product, {String size = 'M', String color = 'Đen', int quantity = 1}) async {
     final existingIndex = _items.indexWhere(
       (item) => item.product.id == product.id && item.size == size && item.color == color,
     );
 
+    String variantId = '${product.id}-$size-$color';
+    // Tim variantId that neu product co variants
+    for (var v in product.variants) {
+      if (v.size == size && v.color == color) {
+        variantId = v.id;
+        break;
+      }
+    }
+
+    int targetQuantity = quantity;
     if (existingIndex >= 0) {
       _items[existingIndex].quantity += quantity;
       if (_items[existingIndex].quantity > 20) {
         _items[existingIndex].quantity = 20;
       }
+      targetQuantity = _items[existingIndex].quantity;
     } else {
       _items.insert(0, CartItemModel(
         id: 'cart-${DateTime.now().millisecondsSinceEpoch}',
         product: product,
-        variantId: '${product.id}-$size-$color',
+        variantId: variantId,
         size: size,
         color: color,
         quantity: quantity,
@@ -106,36 +153,67 @@ class CartProvider extends ChangeNotifier {
       ));
     }
     notifyListeners();
+
+    // Dong bo backend PUT /api/v1/cart/items
+    try {
+      await _api.dio.put('/cart/items', data: {
+        'variantId': variantId,
+        'quantity': targetQuantity,
+      });
+    } catch (_) {}
   }
 
   /// Tang so luong (+1)
-  void incrementQuantity(String cartItemId) {
+  Future<void> incrementQuantity(String cartItemId) async {
     final index = _items.indexWhere((i) => i.id == cartItemId);
     if (index >= 0 && _items[index].quantity < 20) {
       _items[index].quantity++;
+      final item = _items[index];
       notifyListeners();
+
+      try {
+        await _api.dio.put('/cart/items', data: {
+          'variantId': item.variantId,
+          'quantity': item.quantity,
+        });
+      } catch (_) {}
     }
   }
 
   /// Giam so luong (-1)
-  void decrementQuantity(String cartItemId) {
+  Future<void> decrementQuantity(String cartItemId) async {
     final index = _items.indexWhere((i) => i.id == cartItemId);
     if (index >= 0) {
       if (_items[index].quantity > 1) {
         _items[index].quantity--;
+        final item = _items[index];
         notifyListeners();
+
+        try {
+          await _api.dio.put('/cart/items', data: {
+            'variantId': item.variantId,
+            'quantity': item.quantity,
+          });
+        } catch (_) {}
       } else {
-        // Neu giam xuong 0 thi xoa mon
         removeItem(cartItemId);
       }
     }
   }
 
-  /// Xoa mot mon khoi gio
-  void removeItem(String cartItemId) {
-    _items.removeWhere((i) => i.id == cartItemId);
-    _checkVoucherEligibility();
-    notifyListeners();
+  /// Xoa mot mon khoi gio (DELETE /api/v1/cart/items/:variantId)
+  Future<void> removeItem(String cartItemId) async {
+    final index = _items.indexWhere((i) => i.id == cartItemId);
+    if (index >= 0) {
+      final variantId = _items[index].variantId;
+      _items.removeAt(index);
+      _checkVoucherEligibility();
+      notifyListeners();
+
+      try {
+        await _api.dio.delete('/cart/items/$variantId');
+      } catch (_) {}
+    }
   }
 
   /// Chon / Bo chon 1 mon
@@ -159,25 +237,41 @@ class CartProvider extends ChangeNotifier {
   }
 
   /// Xoa cac mon da duoc tick chon sau khi dat hang thanh cong
-  void clearSelectedItems() {
+  Future<void> clearSelectedItems() async {
+    final toRemove = _items.where((i) => i.isSelected).toList();
     _items.removeWhere((i) => i.isSelected);
     _appliedVoucher = null;
     notifyListeners();
+
+    for (var item in toRemove) {
+      try {
+        await _api.dio.delete('/cart/items/${item.variantId}');
+      } catch (_) {}
+    }
+  }
+
+  /// Xoa sach gio hang (DELETE /api/v1/cart)
+  Future<void> clearCart() async {
+    _items.clear();
+    _appliedVoucher = null;
+    notifyListeners();
+
+    try {
+      await _api.dio.delete('/cart');
+    } catch (_) {}
   }
 
   // =================== AP-VC1: ÁP DỤNG MÃ GIẢM GIÁ ===================
 
-  /// Ap dung ma giam gia
   String? applyVoucher(VoucherModel voucher) {
     if (selectedSubtotal < voucher.minOrderValue) {
       return 'Đơn hàng tối thiểu phải từ ${voucher.minOrderValue} đ để áp dụng mã này';
     }
     _appliedVoucher = voucher;
     notifyListeners();
-    return null; // Thanh cong
+    return null;
   }
 
-  /// Nhap ma code truc tiep
   String? applyVoucherCode(String code) {
     final cleanCode = code.trim().toUpperCase();
     final voucher = MockData.vouchers.cast<VoucherModel?>().firstWhere(
@@ -191,7 +285,6 @@ class CartProvider extends ChangeNotifier {
     return applyVoucher(voucher);
   }
 
-  /// Huy ap dung ma giam gia
   void removeVoucher() {
     _appliedVoucher = null;
     notifyListeners();

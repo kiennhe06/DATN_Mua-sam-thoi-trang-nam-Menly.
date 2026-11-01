@@ -1,12 +1,46 @@
+import 'dart:io';
 import 'package:dio/dio.dart';
+import 'package:flutter/foundation.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
-/// Lop goi API chung toi backend.
+/// Lop goi API chung toi backend Menly.
 class ApiClient {
-  ApiClient()
-      : _dio = Dio(BaseOptions(baseUrl: 'http://10.0.2.2:5000/api/v1'));
+  static final ApiClient _instance = ApiClient._internal();
+  factory ApiClient() => _instance;
 
-  final Dio _dio;
-
+  late final Dio _dio;
   Dio get dio => _dio;
-  // TODO: them token vao header khi da dang nhap
+
+  ApiClient._internal() {
+    String baseUrl = 'http://10.0.2.2:5000/api/v1';
+    if (!kIsWeb && (Platform.isWindows || Platform.isLinux || Platform.isMacOS)) {
+      baseUrl = 'http://localhost:5000/api/v1';
+    }
+
+    _dio = Dio(BaseOptions(
+      baseUrl: baseUrl,
+      connectTimeout: const Duration(seconds: 8),
+      receiveTimeout: const Duration(seconds: 8),
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+      },
+    ));
+
+    // Tu dong gan Bearer Token vao Header khi nguoi dung da dang nhap
+    _dio.interceptors.add(
+      InterceptorsWrapper(
+        onRequest: (options, handler) async {
+          try {
+            final prefs = await SharedPreferences.getInstance();
+            final token = prefs.getString('access_token') ?? prefs.getString('token');
+            if (token != null && token.isNotEmpty) {
+              options.headers['Authorization'] = 'Bearer $token';
+            }
+          } catch (_) {}
+          return handler.next(options);
+        },
+      ),
+    );
+  }
 }
